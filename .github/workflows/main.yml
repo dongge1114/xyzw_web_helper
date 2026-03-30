@@ -1,43 +1,56 @@
-name: Build Vue.js App with Electron
+name: Build Electron App
 
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [windows-latest]
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
 
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Install Dependencies with pnpm
+      - name: Install dependencies
         run: pnpm install
 
-      - name: Build Vue Project
-        run: pnpm build # 这会执行 package.json 中的 build 脚本
+      - name: Run lint (optional)
+        run: pnpm run lint
 
-      - name: Install Electron Builder
-        run: npm install -g electron-builder
+      - name: Format code (optional)
+        run: pnpm run format
 
-      - name: Create Electron Wrapper
+      - name: Build frontend
+        run: pnpm run build
+        env:
+          NODE_ENV: production
+
+      - name: Install Electron & Builder
         run: |
-          # 创建一个简单的 Electron 主进程文件
+          pnpm add -D electron electron-builder
+
+      - name: Create Electron main process file
+        run: |
+          mkdir electron
           echo "const { app, BrowserWindow } = require('electron');
           const path = require('path');
 
           function createWindow () {
-            const mainWindow = new BrowserWindow({
+            const win = new BrowserWindow({
               width: 1200,
               height: 800,
               webPreferences: {
@@ -47,36 +60,80 @@ jobs:
               }
             });
 
-            mainWindow.loadFile('./dist/index.html'); // 加载构建后的 index.html
+            // Load the built Vue app
+            win.loadFile(path.join(__dirname, '../dist/index.html'));
+
+            // Open DevTools in development
+            if (!app.isPackaged) {
+              win.webContents.openDevTools();
+            }
           }
 
           app.whenReady().then(() => {
             createWindow();
 
-            app.on('activate', function () {
-              if (BrowserWindow.getAllWindows().length === 0) createWindow();
+            app.on('activate', () => {
+              if (BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+              }
             });
           });
 
-          app.on('window-all-closed', function () {
-            if (process.platform !== 'darwin') app.quit();
-          });" > main.js
+          app.on('window-all-closed', () => {
+            if (process.platform !== 'darwin') {
+              app.quit();
+            }
+          });" > electron/main.js
 
-          # 创建一个简单的 preload 文件
-          echo "console.log('Preload script loaded');" > preload.js
-
-          # 创建 package.json 用于 Electron
-          echo "{ \"name\": \"xyzw_web_helper\", \"version\": \"1.0.0\", \"main\": \"main.js\", \"scripts\": { \"start\": \"electron .\" }, \"devDependencies\": { \"electron\": \"^latest\" }, \"build\": { \"appId\": \"com.example.xyzw_web_helper\", \"productName\": \"XYZW Web Helper\", \"directories\": { \"output\": \"out\" }, \"files\": [ \"dist/**/*\", \"main.js\", \"preload.js\" ], \"win\": { \"target\": \"nsis\", \"icon\": \"icon.ico\" } } }" > electron_package.json
-
-      - name: Build Electron App
+      - name: Create preload script
         run: |
-          # 安装 electron
-          npm install electron --save-dev
-          # 构建 Electron 应用
-          electron-builder --win --config electron_package.json
+          echo "// Preload script for Electron
+          console.log('Electron preload script loaded');" > electron/preload.js
 
-      - name: Upload Artifact
+      - name: Create Electron config
+        run: |
+          echo "{
+            \"name\": \"xyzw-web-helper\",
+            \"version\": \"1.0.0\",
+            \"description\": \"Web helper tool\",
+            \"main\": \"main.js\",
+            \"scripts\": {
+              \"start\": \"electron .\"
+            },
+            \"keywords\": [],
+            \"author\": \"\",
+            \"license\": \"ISC\",
+            \"devDependencies\": {
+              \"electron\": \"^latest\",
+              \"electron-builder\": \"^latest\"
+            },
+            \"build\": {
+              \"appId\": \"com.electron.xyzwebhelper\",
+              \"productName\": \"XYZW Web Helper\",
+              \"directories\": {
+                \"output\": \"release\"
+              },
+              \"files\": [
+                \"../dist/**/*\",
+                \"main.js\",
+                \"preload.js\"
+              ],
+              \"win\": {
+                \"target\": \"nsis\",
+                \"icon\": \"icon.ico\"
+              }
+            }
+          }" > electron/package.json
+
+      - name: Build Electron app
+        run: |
+          cd electron
+          npx electron-builder --win --config package.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: xyzw_web_helper-Electron-App
-          path: out/*.exe # 打包后的 .exe 文件位置
+          name: electron-app-${{ matrix.os }}
+          path: electron/release/*.exe
