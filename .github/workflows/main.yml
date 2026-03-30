@@ -1,4 +1,4 @@
-name: 构建 EXE  # 这里可以写中文，显示在网页标题上
+name: 名称：构建 EXE  # 这里可以写中文，显示在网页标题上
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build:  # 【关键修正】这里必须改为英文（例如 build），不能用中文“构建”
+  build:
     runs-on: windows-latest
 
     steps:
@@ -25,10 +25,10 @@ jobs:
         run: npm install -g pkg
 
       - name: 生成EXE
-        run: pkg .  # 假设你的入口文件是 index.js 或 package.json 指定的 main 文件
+        run: pkg .  # 确保 package.json 中已配置 bin 或 main 字段
 
       - name: 上传工件
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 【关键修正】升级为 v4
         with:
           name: 可执行文件
           path: '*.exe'
