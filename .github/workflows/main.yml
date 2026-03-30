@@ -1,4 +1,4 @@
-name: 名称：构建 EXE  # 这里可以写中文，显示在网页标题上
+name: Build Node.js EXE
 
 on:
   push:
@@ -7,32 +7,37 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest # Python 项目也需要在 Windows 上打包成 .exe
+    runs-on: windows-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          python-version: '3.10' # 使用较新的 Python 3.10 版本
+          node-version: '18' # 使用 Node.js 18
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt # 安装项目所需的所有 Python 库
-          pip install pyinstaller       # 安装打包工具 PyInstaller
+      - name: Install pnpm
+        run: npm install -g pnpm
 
-      - name: Build EXE with PyInstaller
+      - name: Install Dependencies with pnpm
+        run: pnpm install # 使用 pnpm 安装依赖
+
+      - name: Install pkg
+        run: npm install -g pkg
+
+      - name: Build EXE with pkg
         run: |
-          # 使用 PyInstaller 打包 main.py 文件，生成一个独立的 .exe 文件
-          pyinstaller --onefile --windowed main.py 
-          # --onefile 参数：打包成一个单独的 .exe 文件
-          # --windowed 参数：不显示控制台窗口（如果程序是 GUI 应用）
+          # 检查 package.json 中的 main 或 bin 字段，确定入口文件
+          # 假设入口文件是 index.js 或根据 package.json 配置
+          # 如果 package.json 中有 bin 字段，则 pkg . 会自动识别
+          # 否则，需要明确指定入口文件，例如 pkg index.js
+          # 先尝试自动识别
+          pkg . --targets node18-win-x64 --output xyzw_web_helper.exe
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4 # 注意这里也要升级到 v4
+        uses: actions/upload-artifact@v4
         with:
           name: xyzw_web_helper-EXE
-          path: dist/main.exe # PyInstaller 会将生成的 .exe 文件放在 dist/ 目录下
+          path: xyzw_web_helper.exe
