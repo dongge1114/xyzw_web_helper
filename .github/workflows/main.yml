@@ -1,23 +1,35 @@
-名称：构建 EXE
-o提交：输入：o推送，工作流触发]
-工作:
+构建 EXE
+
+# 修正后的 on 配置：缩进 + 列表形式
+on:
+  push:
+    branches: [ "main", "master" ]  # 监听 main 和 master 分支的推送
+  workflow_dispatch: {}  # 允许手动触发
+
+jobs:
   构建:
-    运行于：Windows-latest
-    步骤:
-      - 名称: 结账代码
-        使用：actions/checkout@v3
-      - 名称: 设置 Node.js
-        使用：actions/setup-node@v3
-        与：
-          节点版本：'18'
-      - 名称: 安装依赖项
-        运行： npm install
-      - 名称: 安装软件包
-        运行： npm install -g pkg
-      - 名称: 生成EXE
-        运行：pkg .
-      - 名称: 上传工件
-        使用：actions/upload-artifact@v3
-        与：
-          name：可执行文件
-          路径: *.exe
+    runs-on: windows-latest  # 必须用 Windows 环境生成 .exe
+
+    steps:
+      - name: 结账代码
+        uses: actions/checkout@v3
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'  # 根据项目需求调整 Node.js 版本
+
+      - name: 安装依赖项
+        run: npm install
+
+      - name: 安装软件包
+        run: npm install -g pkg
+
+      - name: 生成EXE
+        run: pkg .  # 打包当前项目（默认入口由 package.json 的 bin 或 main 决定）
+
+      - name: 上传工件
+        uses: actions/upload-artifact@v3
+        with:
+          name: 可执行文件
+          path: '*.exe'  # 上传所有 .exe 文件（确保 pkg 输出的 .exe 在根目录或指定路径）
