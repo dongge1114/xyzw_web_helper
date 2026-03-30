@@ -1,14 +1,13 @@
-name: 构建 EXE
+name: 构建 EXE  # 这里可以写中文，显示在网页标题上
 
-# 修正后的 on 配置：缩进 + 列表形式
 on:
   push:
-    branches: [ "main", "master" ]  # 监听 main 和 master 分支的推送
-  workflow_dispatch: {}  # 允许手动触发
+    branches: [ "main", "master" ]
+  workflow_dispatch: {}
 
 jobs:
-  构建:
-    runs-on: windows-latest  # 必须用 Windows 环境生成 .exe
+  build:  # 【关键修正】这里必须改为英文（例如 build），不能用中文“构建”
+    runs-on: windows-latest
 
     steps:
       - name: 结账代码
@@ -17,7 +16,7 @@ jobs:
       - name: 设置 Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'  # 根据项目需求调整 Node.js 版本
+          node-version: '18'
 
       - name: 安装依赖项
         run: npm install
@@ -26,10 +25,10 @@ jobs:
         run: npm install -g pkg
 
       - name: 生成EXE
-        run: pkg .  # 打包当前项目（默认入口由 package.json 的 bin 或 main 决定）
+        run: pkg .  # 假设你的入口文件是 index.js 或 package.json 指定的 main 文件
 
       - name: 上传工件
         uses: actions/upload-artifact@v3
         with:
           name: 可执行文件
-          path: '*.exe'  # 上传所有 .exe 文件（确保 pkg 输出的 .exe 在根目录或指定路径）
+          path: '*.exe'
