@@ -66,7 +66,8 @@ jobs:
       - name: Create Electron main process file
         run: |
           mkdir electron
-          echo "const { app, BrowserWindow } = require('electron');
+          @'
+          const { app, BrowserWindow } = require('electron');
           const path = require('path');
 
           function createWindow () {
@@ -103,52 +104,55 @@ jobs:
             if (process.platform !== 'darwin') {
               app.quit();
             }
-          });" > electron/main.js
+          });
+          '@ | Out-File -FilePath electron\main.js -Encoding utf8
 
       - name: Create preload script
         run: |
-          echo "// Preload script for Electron
-          console.log('Electron preload script loaded');" > electron/preload.js
+          @'
+          // Preload script for Electron
+          console.log('Electron preload script loaded');
+          '@ | Out-File -FilePath electron\preload.js -Encoding utf8
 
       - name: Create Electron config
         run: |
-          echo "{
-            \"name\": \"xyzw-web-helper\",
-            \"version\": \"1.0.0\",
-            \"description\": \"Web helper tool\",
-            \"main\": \"main.js\",
-            \"scripts\": {
-              \"start\": \"electron .\"
-            },
-            \"keywords\": [],
-            \"author\": \"\",
-            \"license\": \"ISC\",
-            \"devDependencies\": {
-              \"electron\": \"^latest\",
-              \"electron-builder\": \"^latest\"
-            },
-            \"build\": {
-              \"appId\": \"com.electron.xyzwebhelper\",
-              \"productName\": \"XYZW Web Helper\",
-              \"directories\": {
-                \"output\": \"release\"
-              },
-              \"files\": [
-                \"../dist/**/*\",
-                \"main.js\",
-                \"preload.js\"
-              ],
-              \"win\": {
-                \"target\": \"nsis\",
-                \"icon\": \"icon.ico\"
+          @{
+            name = "xyzw-web-helper"
+            version = "1.0.0"
+            description = "Web helper tool"
+            main = "main.js"
+            scripts = @{
+              start = "electron ."
+            }
+            keywords = @()
+            author = ""
+            license = "ISC"
+            devDependencies = @{
+              electron = "^latest"
+              "electron-builder" = "^latest"
+            }
+            build = @{
+              appId = "com.electron.xyzwebhelper"
+              productName = "XYZW Web Helper"
+              directories = @{
+                output = "release"
+              }
+              files = @(
+                "../dist/**/*",
+                "main.js",
+                "preload.js"
+              )
+              win = @{
+                target = "nsis"
+                icon = "icon.ico"
               }
             }
-          }" > electron/package.json
+          } | ConvertTo-Json -Depth 10 | Out-File -FilePath electron\package.json -Encoding utf8
 
       - name: Build Electron app
         run: |
           cd electron
-          npx electron-builder --win --config package.json
+          npx electron-builder --win --config package.json --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -156,43 +160,53 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: electron-app-windows
-          path: electron/release/*.exe
+          path: electron\release\*.exe
 
-  build-backend:
+  build-cloudflare-worker:
+    needs: build-frontend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
         with:
-          python-version: '3.10'
+          name: frontend-dist
+          path: dist/
 
-      - name: Install backend dependencies
+      - name: Check for _worker.js
         run: |
-          cd server
-          pip install -r requirements.txt
+          if [ -f "dist/_worker.js" ]; then
+            echo "_worker.js found in dist folder"
+            mkdir -p cloudflare-package
+            cp -r dist/* cloudflare-package/
+            echo "# XYZW Cloudflare Worker Package
+            ## Deployment Instructions
+            1. Install Wrangler: \`npm install -g wrangler\`
+            2. Login to Cloudflare: \`wrangler login\`
+            3. Create a new Pages project in Cloudflare Dashboard
+            4. Connect to Git or upload these files
+            5. Set build command to: \`npm run build\`
+            6. Set build output directory to: \`dist\`
+            
+            The _worker.js file will automatically enable Advanced Mode for API proxying." > cloudflare-package/README.md
+          else
+            echo "No _worker.js found in dist folder"
+            mkdir -p cloudflare-package
+            cp -r dist/* cloudflare-package/
+            echo "# XYZW Frontend Package
+            ## Local Preview
+            1. Install Wrangler: \`npm install -g wrangler\`
+            2. Build project: \`npm run build\`
+            3. Preview: \`npx wrangler pages dev dist\`
+            4. Access: http://localhost:8787
+            
+            For full functionality including API proxying, deploy to Cloudflare Pages which will automatically recognize _worker.js if present." > cloudflare-package/README.md
+          fi
 
-      - name: Create backend package
-        run: |
-          # Create a standalone Python executable using PyInstaller
-          pip install pyinstaller
-          cd server
-          pyinstaller --onefile --add-data "templates:templates" --add-data "static:static" --hidden-import="flask_login" app.py
-          mkdir -p ../backend-package
-          cp dist/app ../backend-package/
-          cp -r templates static ../backend-package/
-          cp requirements.txt ../backend-package/
-          echo "# XYZW Backend Service
-          ## Usage
-          1. Install Python 3.x
-          2. Run: \`pip install -r requirements.txt\`
-          3. Start: \`python app.py\`
-          4. Access: http://localhost:5000" > ../backend-package/README.md
-
-      - name: Upload backend package
+      - name: Upload Cloudflare package
         uses: actions/upload-artifact@v4
         with:
-          name: backend-service
-          path: backend-package/
+          name: cloudflare-pages-package
+          path: cloudflare-package/
