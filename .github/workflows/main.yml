@@ -1,4 +1,4 @@
-name: Build Electron App
+name: Build FullStack App
 
 on:
   push:
@@ -6,13 +6,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [windows-latest]
-
+  build-frontend:
+    runs-on: windows-latest
+    outputs:
+      frontend-built: ${{ steps.build.outputs.built }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,23 +23,45 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: pnpm install
-
-      - name: Run lint (optional)
-        run: pnpm run lint
-
-      - name: Format code (optional)
-        run: pnpm run format
 
       - name: Build frontend
         run: pnpm run build
-        env:
-          NODE_ENV: production
+
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: Mark as built
+        id: build
+        run: echo "built=true" >> $GITHUB_OUTPUT
+
+  build-electron:
+    needs: build-frontend
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
 
       - name: Install Electron & Builder
-        run: |
-          pnpm add -D electron electron-builder
+        run: pnpm add -D electron electron-builder
 
       - name: Create Electron main process file
         run: |
@@ -132,8 +152,47 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload artifacts
+      - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: electron-app-${{ matrix.os }}
+          name: electron-app-windows
           path: electron/release/*.exe
+
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install backend dependencies
+        run: |
+          cd server
+          pip install -r requirements.txt
+
+      - name: Create backend package
+        run: |
+          # Create a standalone Python executable using PyInstaller
+          pip install pyinstaller
+          cd server
+          pyinstaller --onefile --add-data "templates:templates" --add-data "static:static" --hidden-import="flask_login" app.py
+          mkdir -p ../backend-package
+          cp dist/app ../backend-package/
+          cp -r templates static ../backend-package/
+          cp requirements.txt ../backend-package/
+          echo "# XYZW Backend Service
+          ## Usage
+          1. Install Python 3.x
+          2. Run: \`pip install -r requirements.txt\`
+          3. Start: \`python app.py\`
+          4. Access: http://localhost:5000" > ../backend-package/README.md
+
+      - name: Upload backend package
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-service
+          path: backend-package/
