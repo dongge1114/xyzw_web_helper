@@ -1,0 +1,23 @@
+名称：构建 EXE
+o提交：输入：o推送，工作流触发]
+工作:
+  构建:
+    运行于：Windows-latest
+    步骤:
+      - 名称: 结账代码
+        使用：actions/checkout@v3
+      - 名称: 设置 Node.js
+        使用：actions/setup-node@v3
+        与：
+          节点版本：'18'
+      - 名称: 安装依赖项
+        运行： npm install
+      - 名称: 安装软件包
+        运行： npm install -g pkg
+      - 名称: 生成EXE
+        运行：pkg .
+      - 名称: 上传工件
+        使用：actions/upload-artifact@v3
+        与：
+          name：可执行文件
+          路径: *.exe
