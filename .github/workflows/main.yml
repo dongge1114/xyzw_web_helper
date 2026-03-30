@@ -61,98 +61,137 @@ jobs:
         run: npm install -g pnpm
 
       - name: Install Electron & Builder
-        run: pnpm add -D electron electron-builder
+        run: |
+          mkdir electron
+          cd electron
+          npm init -y
+          npm install electron --save-dev
+          npm install electron-builder --save-dev
 
       - name: Create Electron main process file
         run: |
-          mkdir electron
           @'
           const { app, BrowserWindow } = require('electron');
           const path = require('path');
 
-          function createWindow () {
-            const win = new BrowserWindow({
+          // Handle creating/removing shortcuts on Windows when installing/uninstalling.
+          if (require('electron-squirrel-startup')) {
+            app.quit();
+          }
+
+          const createWindow = () => {
+            // Create the browser window.
+            const mainWindow = new BrowserWindow({
               width: 1200,
               height: 800,
               webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
                 nodeIntegration: false,
-                contextIsolation: true,
-                preload: path.join(__dirname, 'preload.js')
+                contextIsolation: true
               }
             });
 
-            // Load the built Vue app
-            win.loadFile(path.join(__dirname, '../dist/index.html'));
+            // and load the index.html of the app.
+            mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 
-            // Open DevTools in development
+            // Open the DevTools.
             if (!app.isPackaged) {
-              win.webContents.openDevTools();
+              mainWindow.webContents.openDevTools();
             }
-          }
+          };
 
+          // This method will be called when Electron has finished
+          // initialization and is ready to create browser windows.
+          // Some APIs can only be used after this event occurs.
           app.whenReady().then(() => {
             createWindow();
 
             app.on('activate', () => {
+              // On OS X it's common to re-create a window in the app when the
+              // dock icon is clicked and there are no other windows open.
               if (BrowserWindow.getAllWindows().length === 0) {
                 createWindow();
               }
             });
           });
 
+          // Quit when all windows are closed, except on macOS. There, it's common
+          // for applications and their menu bar to stay active until the user quits
+          // explicitly with Cmd + Q.
           app.on('window-all-closed', () => {
             if (process.platform !== 'darwin') {
               app.quit();
             }
           });
+
+          // In this file you can include the rest of your app's specific main process
+          // code. You can also put them in separate files and import them here.
           '@ | Out-File -FilePath electron\main.js -Encoding utf8
 
       - name: Create preload script
         run: |
           @'
-          // Preload script for Electron
-          console.log('Electron preload script loaded');
+          /**
+           * The preload script runs in a sandboxed renderer process before the
+           * renderer process is loaded. It has access to node.js APIs and can
+           * communicate with the main process via the contextBridge API.
+           */
+          const { contextBridge } = require('electron');
+
+          // Expose protected methods that allow the renderer process to use
+          // the ipcRenderer without exposing the entire object
+          contextBridge.exposeInMainWorld('electronAPI', {
+            // Example API call
+            // ping: () => ipcRenderer.invoke('ping')
+          });
           '@ | Out-File -FilePath electron\preload.js -Encoding utf8
 
-      - name: Create Electron config
+      - name: Create index.html placeholder
         run: |
-          @{
-            name = "xyzw-web-helper"
-            version = "1.0.0"
-            description = "Web helper tool"
-            main = "main.js"
-            scripts = @{
-              start = "electron ."
+          @'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>XYZW Web Helper</title>
+          </head>
+          <body>
+            <div id="app">Loading XYZW Web Helper...</div>
+            <!-- The actual Vue app will be injected here -->
+          </body>
+          </html>
+          '@ | Out-File -FilePath electron\index.html -Encoding utf8
+
+      - name: Update package.json for Electron
+        run: |
+          cd electron
+          $packageJson = Get-Content package.json | ConvertFrom-Json
+          $packageJson | Add-Member -NotePropertyName "main" -NotePropertyValue "main.js"
+          $packageJson | Add-Member -NotePropertyName "build" -NotePropertyValue @{
+            "appId" = "com.electron.xyzwebhelper"
+            "productName" = "XYZW Web Helper"
+            "directories" = @{
+              "output" = "release"
             }
-            keywords = @()
-            author = ""
-            license = "ISC"
-            devDependencies = @{
-              electron = "^latest"
-              "electron-builder" = "^latest"
+            "files" = @(
+              "../dist/**/*",
+              "main.js",
+              "preload.js",
+              "index.html"
+            )
+            "win" = @{
+              "target" = "nsis"
+              "icon" = "icon.ico"
             }
-            build = @{
-              appId = "com.electron.xyzwebhelper"
-              productName = "XYZW Web Helper"
-              directories = @{
-                output = "release"
-              }
-              files = @(
-                "../dist/**/*",
-                "main.js",
-                "preload.js"
-              )
-              win = @{
-                target = "nsis"
-                icon = "icon.ico"
-              }
-            }
-          } | ConvertTo-Json -Depth 10 | Out-File -FilePath electron\package.json -Encoding utf8
+          }
+          $packageJson.scripts | Add-Member -NotePropertyName "start" -NotePropertyValue "electron ."
+          $packageJson | ConvertTo-Json -Depth 10 | Out-File -FilePath package.json -Encoding utf8
 
       - name: Build Electron app
         run: |
           cd electron
-          npx electron-builder --win --config package.json --publish=never
+          npx electron-builder --win --config --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
