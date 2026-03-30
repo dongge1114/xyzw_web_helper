@@ -1,0 +1,49 @@
+name: Build Node.js EXE
+
+# 触发条件：
+# 1. 推送到 main 或 master 分支时自动触发
+# 2. 允许在 Actions 页面手动点击按钮触发
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest # 必须使用 Windows 环境才能打包出 .exe
+
+    steps:
+      # 步骤 1: 检出代码
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 步骤 2: 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # 根据你的项目需求调整版本，如 16, 18, 20
+
+      # 步骤 3: 安装项目依赖
+      - name: Install Dependencies
+        run: npm install
+
+      # 步骤 4: 安装 pkg 工具
+      - name: Install pkg
+        run: npm install -g pkg
+
+      # 步骤 5: 执行打包
+      # 注意：这里假设你的入口文件是 index.js 或 app.js
+      # 如果你的入口文件不同，请修改下面的文件名
+      - name: Build EXE with pkg
+        run: |
+          # 这里的 index.js 请替换为你实际的主文件入口
+          # -t node18-win-x64 指定目标为 Node 18 的 Windows 64位程序
+          pkg . -t node18-win-x64 --output xyzw_web_helper.exe
+
+      # 步骤 6: 上传生成的 exe 文件
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: xyzw_web_helper-EXE
+          path: xyzw_web_helper.exe
+          retention-days: 7 # 文件保留7天
